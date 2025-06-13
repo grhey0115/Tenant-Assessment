@@ -1,4 +1,7 @@
 @import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   --background: #ffffff;
@@ -23,4 +26,76 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Custom Fonts */
+html,
+body {
+  font-family: 'Inter', sans-serif;
+}
+
+/* Custom Styles from original HTML */
+.bottom-line-option {
+    transition: all 0.2s ease-in-out;
+}
+
+.bottom-line-option label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%; /* Ensure label takes full height for clickable area */
+}
+
+.custom-radio-indicator {
+    position: absolute;
+    top: 0.75rem; /* Equivalent to py-3, roughly half of that */
+    right: 0.75rem;
+    height: 0.75rem;
+    width: 0.75rem;
+    background-color: #ffffff; /* White background */
+    border: 2px solid #cbd5e1; /* slate-300 */
+    border-radius: 50%;
+    transition: all 0.2s ease-in-out;
+}
+
+/* Checked State for custom radio */
+.bottom-line-option input[type="radio"]:checked + label .custom-radio-indicator {
+    background-color: #2563eb; /* blue-600 */
+    border-color: #2563eb;
+}
+
+/* Inner dot for custom radio */
+.bottom-line-option input[type="radio"]:checked + label .custom-radio-indicator::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    height: 0.375rem; /* half of 0.75rem indicator */
+    width: 0.375rem;
+    border-radius: 50%;
+    background: white; /* white dot */
+}
+
+/* Selected states for the recommendation options */
+.approve-selected {
+    background-color: #dcfce7; /* green-100 */
+    border-color: #4ade80; /* green-400 */
+}
+
+.maybe-selected {
+    background-color: #fffbeb; /* yellow-100 */
+    border-color: #fcd34d; /* yellow-400 */
+}
+
+.no-selected {
+    background-color: #fee2e2; /* red-100 */
+    border-color: #f87171; /* red-400 */
+}
+
+.required-ast::after {
+    content: '*';
+    color: #ef4444; /* red-500 */
+    margin-left: 0.25rem;
 }
