@@ -19,9 +19,12 @@ export default function PublicFormPage() {
   const [prospectPhone, setProspectPhone] = useState("");
   const [prospectEmail, setProspectEmail] = useState("");
 
+  // Validation errors state
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
   // Dropdown data
-  const [properties, setProperties] = useState<{ id: string; property_name: string }[]>([]);
-  const [units, setUnits] = useState<{ id: string; unit_number: string }[]>([]);
+  const [properties, setProperties] = useState<{ id: string; property_name: string; property_id: string }[]>([]);
+  const [units, setUnits] = useState<{ id: string; unit_name: string }[]>([]);
   const [loadingProperties, setLoadingProperties] = useState(false);
   const [loadingUnits, setLoadingUnits] = useState(false);
 
@@ -46,8 +49,15 @@ export default function PublicFormPage() {
   const [modalType, setModalType] = useState<"info" | "success" | "error">("info");
 
   // Find property/unit names for review
-  const propertyName = properties.find(p => p.id === property)?.property_name;
-  const unitNumber = units.find(u => u.id === unit)?.unit_number;
+  const propertyName = properties.find(p => p.property_id === property)?.property_name;
+  const unitNumber = units.find(u => u.id === unit)?.unit_name;
+
+  // Log selected property name for debugging
+  useEffect(() => {
+    if (propertyName) {
+      console.log("Successfully retrieved selecting property:", propertyName);
+    }
+  }, [propertyName]);
 
   // Set default date/time on mount
   useEffect(() => {
@@ -61,10 +71,15 @@ export default function PublicFormPage() {
     setLoadingProperties(true);
     supabase
       .from("properties")
-      .select("id, property_name")
+      .select("id, property_name, property_id")
       .order("property_name")
       .then(({ data, error }) => {
-        if (!error && data) setProperties(data);
+        if (error) {
+          console.error("Error fetching properties:", error);
+        } else if (data) {
+          setProperties(data as { id: string; property_name: string; property_id: string }[]);
+          console.log("Successfully retrieved properties:", data);
+        }
         setLoadingProperties(false);
       });
   }, []);
@@ -75,12 +90,17 @@ export default function PublicFormPage() {
     setLoadingUnits(true);
     supabase
       .from("units")
-      .select("id, unit_number")
+      .select("id, unit_name")
       .eq("property_id", property)
-      .eq("status", "available")
-      .order("unit_number")
+      .eq("status", "Available")
+      .order("unit_name")
       .then(({ data, error }) => {
-        if (!error && data) setUnits(data);
+        if (error) {
+          console.error("Error fetching units:", error);
+        } else if (data) {
+          setUnits(data);
+          console.log("Successfully retrieved units:", data);
+        }
         setLoadingUnits(false);
       });
   }, [property]);
@@ -90,10 +110,29 @@ export default function PublicFormPage() {
     setSectionValues(prev => ({ ...prev, [name]: value }));
   };
 
+  // Form validation function
+  const validateForm = () => {
+    const errors: Record<string, string> = {};
+    if (!date) errors.date = "Date is required.";
+    if (!time) errors.time = "Time is required.";
+    if (!property) errors.property = "Property is required.";
+    if (!unit) errors.unit = "Unit is required.";
+    if (!agent) errors.agent = "Agent Name is required.";
+    if (!prospectName) errors.prospectName = "Prospect Name is required.";
+    if (!prospectPhone) errors.prospectPhone = "Phone Number is required.";
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   // Handle submit (shows review)
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setShowReview(true);
+    console.log("handleSubmit triggered, preventing default form submission and showing review.");
+    if (validateForm()) {
+      setShowReview(true);
+    } else {
+      showNotificationModal("Validation Error", "Please fill in all required basic information fields.", "error");
+    }
   };
 
   // Handle edit from review
@@ -109,6 +148,7 @@ export default function PublicFormPage() {
 
   // Handle actual submission to Supabase
   const handleConfirmSubmit = async () => {
+    console.log("Attempting to confirm submission...");
     setSubmitting(true);
     setSubmitSuccess(null);
     setSubmitError(null);
@@ -116,38 +156,81 @@ export default function PublicFormPage() {
     try {
       // 1. Upload voice note if present
       if (voiceNoteBlob) {
+        console.log("Voice note detected. Starting upload...");
         showNotificationModal("Uploading...", "Voice note is being uploaded.", "info");
         const fileName = `voice-notes/${Date.now()}-${Math.random().toString(36).slice(2)}.webm`;
         const { data, error } = await supabase.storage.from("tenant-notes").upload(fileName, voiceNoteBlob, {
           cacheControl: "3600",
           upsert: false,
         });
-        if (error) throw error;
+        if (error) {
+          console.error("Voice note upload error:", error);
+          throw error;
+        }
         const { data: urlData } = supabase.storage.from("tenant-notes").getPublicUrl(fileName);
         uploadedVoiceUrl = urlData.publicUrl;
         setVoiceNoteUrl(uploadedVoiceUrl);
+        console.log("Voice note uploaded successfully. URL:", uploadedVoiceUrl);
         showNotificationModal("Upload Complete", "Voice note uploaded!", "success");
       }
-      // 2. Insert form data into tenant_assessments
-      const { error: insertError } = await supabase.from("tenant_assessments").insert({
+
+      // 2. Insert Prospect Data (if applicable)
+      let newProspectId = null;
+      if (prospectName || prospectPhone || prospectEmail) {
+        console.log("Attempting to insert prospect data...");
+        const { data: prospectData, error: prospectError } = await supabase.from("prospects").insert({
+          name: prospectName,
+          phone: prospectPhone,
+          email: prospectEmail,
+          // Add other prospect fields if collected in the form
+        }).select("id").single();
+
+        if (prospectError) {
+          console.error("Supabase prospect insertion error:", prospectError);
+          throw prospectError;
+        }
+        newProspectId = prospectData.id;
+        console.log("Prospect inserted successfully. ID:", newProspectId);
+      }
+
+      // 3. Insert form data into tenant_assessments
+      console.log("Attempting to insert form data into tenant_assessments...");
+      console.log("Data to insert:", {
         date,
         time,
         property_id: property,
         unit_id: unit,
-        agent,
-        prospect_name: prospectName,
-        prospect_phone: prospectPhone,
-        prospect_email: prospectEmail,
+        agent_name: agent,
+        prospect_id: newProspectId, // Use the new prospect ID here
+        // Remove prospect_name, prospect_phone, prospect_email from this object
         ...sectionValues,
         voice_note_url: uploadedVoiceUrl,
         recommendation,
         created_at: new Date().toISOString(),
       });
-      if (insertError) throw insertError;
+      const { error: insertError } = await supabase.from("tenant_assessments").insert({
+        date,
+        time,
+        property_id: property,
+        unit_id: unit,
+        agent_name: agent,
+        prospect_id: newProspectId, // Use the new prospect ID here
+        // Remove prospect_name, prospect_phone, prospect_email from this object
+        ...sectionValues,
+        voice_note_url: uploadedVoiceUrl,
+        recommendation,
+        created_at: new Date().toISOString(),
+      });
+      if (insertError) {
+        console.error("Supabase insertion error:", insertError);
+        throw insertError;
+      }
+      console.log("Supabase insertion successful!");
       setSubmitSuccess("Assessment submitted successfully!");
       showNotificationModal("Assessment Submitted", "Your assessment has been successfully submitted!", "success");
 
       // Reset form
+      console.log("Resetting form...");
       setDate("");
       setTime("");
       setProperty("");
@@ -162,9 +245,11 @@ export default function PublicFormPage() {
       setShowReview(false);
       setRecommendation("");
     } catch (err: any) {
+      console.error("Submission process failed:", err.message || err);
       setSubmitError(err.message || "Submission failed");
       showNotificationModal("Submission Error", `Could not submit: ${err.message}`, "error");
     } finally {
+      console.log("Submission process finished. Setting submitting to false.");
       setSubmitting(false);
     }
   };
@@ -181,7 +266,7 @@ export default function PublicFormPage() {
         {submitError && <div className="bg-red-100 text-red-800 p-4 rounded mb-4 border border-red-200">{submitError}</div>}
 
         {!showReview && (
-          <form className="space-y-10">
+          <form className="space-y-10" onSubmit={handleSubmit}>
             <section className="bg-white p-6 rounded-xl shadow-md border border-slate-100">
               <h2 className="text-2xl font-bold text-slate-700 mb-6 border-b pb-3 flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-7 h-7 text-blue-500"><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.02M10.5 19.5h3m-6.75-9.75h9.75M18 5.25H6a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 006 19.5h12a2.25 2.25 0 002.25-2.25V7.5A2.25 2.25 0 0018 5.25z" /></svg>
@@ -191,40 +276,47 @@ export default function PublicFormPage() {
                 <div>
                   <label htmlFor="date" className="block text-sm font-medium text-slate-700 mb-1 required-ast">Date</label>
                   <input type="date" id="date" name="date" required className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 text-slate-900 bg-slate-50" value={date} onChange={e => setDate(e.target.value)} />
+                  {formErrors.date && <p className="text-red-500 text-sm mt-1">{formErrors.date}</p>}
                 </div>
                 <div>
                   <label htmlFor="time" className="block text-sm font-medium text-slate-700 mb-1 required-ast">Time</label>
                   <input type="time" id="time" name="time" required className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 text-slate-900 bg-slate-50" value={time} onChange={e => setTime(e.target.value)} />
+                  {formErrors.time && <p className="text-red-500 text-sm mt-1">{formErrors.time}</p>}
                 </div>
                 <div>
                   <label htmlFor="property" className="block text-sm font-medium text-slate-700 mb-1 required-ast">Property</label>
                   <select id="property" name="property" required className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 text-slate-900 bg-slate-50" value={property} onChange={e => setProperty(e.target.value)}>
                     <option value="">{loadingProperties ? "Loading..." : "Select Property"}</option>
                     {properties.map((p) => (
-                      <option key={p.id} value={p.id}>{p.property_name}</option>
+                      <option key={p.id} value={p.property_id}>{p.property_name}</option>
                     ))}
                   </select>
+                  {formErrors.property && <p className="text-red-500 text-sm mt-1">{formErrors.property}</p>}
                 </div>
                 <div>
                   <label htmlFor="unit" className="block text-sm font-medium text-slate-700 mb-1 required-ast">Unit</label>
                   <select id="unit" name="unit" required className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 text-slate-900 bg-slate-50" value={unit} onChange={e => setUnit(e.target.value)} disabled={!property}>
                     <option value="">{loadingUnits ? "Loading..." : "Select Unit"}</option>
                     {units.map((u) => (
-                      <option key={u.id} value={u.id}>{u.unit_number}</option>
+                      <option key={u.id} value={u.id}>{u.unit_name}</option>
                     ))}
                   </select>
+                  {formErrors.unit && <p className="text-red-500 text-sm mt-1">{formErrors.unit}</p>}
                 </div>
                 <div>
                   <label htmlFor="agent" className="block text-sm font-medium text-slate-700 mb-1 required-ast">Agent Name</label>
                   <input type="text" id="agent" name="agent" placeholder="Your Name" required className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 text-slate-900 bg-slate-50" value={agent} onChange={e => setAgent(e.target.value)} />
+                  {formErrors.agent && <p className="text-red-500 text-sm mt-1">{formErrors.agent}</p>}
                 </div>
                 <div>
                   <label htmlFor="prospectName" className="block text-sm font-medium text-slate-700 mb-1 required-ast">Prospect Name</label>
                   <input type="text" id="prospectName" name="prospectName" placeholder="Prospect's Full Name" required className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 text-slate-900 bg-slate-50" value={prospectName} onChange={e => setProspectName(e.target.value)} />
+                  {formErrors.prospectName && <p className="text-red-500 text-sm mt-1">{formErrors.prospectName}</p>}
                 </div>
                 <div>
                   <label htmlFor="prospectPhone" className="block text-sm font-medium text-slate-700 mb-1 required-ast">Phone Number</label>
                   <input type="tel" id="prospectPhone" name="prospectPhone" placeholder="(555) 123-4567" required className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 text-slate-900 bg-slate-50" value={prospectPhone} onChange={e => setProspectPhone(e.target.value)} />
+                  {formErrors.prospectPhone && <p className="text-red-500 text-sm mt-1">{formErrors.prospectPhone}</p>}
                 </div>
                 <div>
                   <label htmlFor="prospectEmail" className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
@@ -247,19 +339,15 @@ export default function PublicFormPage() {
             <RecommendationSection value={recommendation} onChange={setRecommendation} />
 
             <div className="mt-10 pt-6 border-t border-slate-200 flex flex-col sm:flex-row sm:justify-end sm:items-center gap-3">
-              <button type="button" className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 border border-slate-300 text-sm font-medium rounded-lg shadow-sm text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150" onClick={handleSubmit}>
+              <button type="submit" className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 border border-slate-300 text-sm font-medium rounded-lg shadow-sm text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                Review
+                Submit Assessment
               </button>
               {/* Save Draft Button - Placeholder for now, can be implemented with Supabase Draft functionality */}
               {/* <button type="button" id="saveDraftBtn" className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-500 hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-400 transition duration-150">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
                 Save Draft
               </button> */}
-              <button type="submit" className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                Submit Assessment
-              </button>
             </div>
           </form>
         )}

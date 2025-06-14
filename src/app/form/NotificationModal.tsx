@@ -44,7 +44,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   if (!isVisible) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+    <div className="fixed inset-0 bg-white bg-opacity-70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
       <div id="modalContent" className={modalClasses} role="alert">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
