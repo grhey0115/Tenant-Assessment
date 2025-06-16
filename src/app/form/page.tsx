@@ -229,6 +229,47 @@ export default function PublicFormPage() {
       setSubmitSuccess("Assessment submitted successfully!");
       showNotificationModal("Assessment Submitted", "Your assessment has been successfully submitted!", "success");
 
+
+      if (prospectEmail) {
+        console.log("Sending confirmation email to:", prospectEmail);
+        try {
+          const response = await fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: prospectEmail,
+              subject: 'Tenant Assessment Submission Confirmation',
+              prospectName,
+              propertyName: propertyName || 'N/A',
+              unitNumber: unitNumber || 'N/A',
+              date,
+              time,
+              agent,
+              recommendation,
+            }),
+          });
+      
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error('Email sending failed:', errorData.error);
+            showNotificationModal(
+              'Email Error',
+              'Assessment submitted, but failed to send confirmation email.',
+              'error'
+            );
+          } else {
+            console.log('Email sent successfully');
+          }
+        } catch (emailError) {
+          console.error('Email sending error:', emailError);
+          showNotificationModal(
+            'Email Error',
+            'Assessment submitted, but failed to send confirmation email.',
+            'error'
+          );
+        }
+      }
+      
       // Reset form
       console.log("Resetting form...");
       setDate("");
@@ -252,6 +293,7 @@ export default function PublicFormPage() {
       console.log("Submission process finished. Setting submitting to false.");
       setSubmitting(false);
     }
+    
   };
 
   return (

@@ -26,7 +26,13 @@ import {
     ThumbsUp as ThumbsUpIcon,
     ThumbsDown as ThumbsDownIcon,
     CircleHelp as CircleHelpIcon,
+    LogOut as LogOutIcon,
 } from 'lucide-react';
+import {
+    PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip,
+    BarChart, Bar, XAxis, YAxis, CartesianGrid
+} from 'recharts';
+import { useRouter } from 'next/navigation';
 
 // --- TypeScript Interfaces ---
 interface Prospect {
@@ -143,16 +149,13 @@ const DropdownFilter = ({ label, value, options, onSelect, displayKey = 'name', 
 }) => {
     const [isOpen, setIsOpen] = useState(false);
 
-    // Defensive check for options
     if (!Array.isArray(options)) {
         console.error(`DropdownFilter (${label}): Invalid options array`, options);
         return <div className="text-red-600 text-sm">Error: Invalid {label} options</div>;
     }
 
-    // Log options for debugging
     console.log(`DropdownFilter (${label}): Options`, options);
 
-    // Filter out invalid options and ensure valueKey exists
     const validOptions = options.filter(
         (o) => o && typeof o === 'object' && o[valueKey] !== null && o[valueKey] !== undefined
     );
@@ -162,7 +165,6 @@ const DropdownFilter = ({ label, value, options, onSelect, displayKey = 'name', 
         ? `All ${label}s`
         : selectedOption?.[displayKey] || selectedOption?.[valueKey] || `All ${label}s`;
 
-    // Log selected option and display value
     console.log(`DropdownFilter (${label}): Selected value`, value, 'Display value', displayValue, 'Selected option', selectedOption);
 
     return (
@@ -200,6 +202,7 @@ const ApplicationsReviewDashboard = () => {
     const [error, setError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedApp, setSelectedApp] = useState<ApplicationData | null>(null);
+    const router = useRouter();
 
     useEffect(() => {
         const fetchApplicationData = async () => {
@@ -240,7 +243,6 @@ const ApplicationsReviewDashboard = () => {
                     throw new Error('No application data returned from Supabase');
                 }
 
-                // Log raw Supabase response
                 console.log('Raw Supabase response:', applicationsData);
 
                 const fetchedApplications: ApplicationData[] = applicationsData.map((app: any) => ({
@@ -261,13 +263,12 @@ const ApplicationsReviewDashboard = () => {
                     kids_pets_notes: app.kids_pets_notes,
                     employment_details: app.employment_details,
                     local_connections_notes: app.local_connections_notes,
-                    prospect: app.prospects, // Mapping prospects object
-                    property: app.properties, // Mapping properties object
-                    unit: app.units, // Mapping units object
+                    prospect: app.prospects,
+                    property: app.properties,
+                    unit: app.units,
                 }));
                 setApplications(fetchedApplications);
 
-                // Log processed applications with focus on properties
                 console.log('Processed applications:', fetchedApplications.map(app => ({
                     id: app.id,
                     property: app.property,
@@ -280,7 +281,6 @@ const ApplicationsReviewDashboard = () => {
                 const unmatchedProperties: string[] = [];
 
                 fetchedApplications.forEach((app) => {
-                    // Handle properties with required property_id
                     if (
                         app.property &&
                         app.property.id &&
@@ -295,25 +295,21 @@ const ApplicationsReviewDashboard = () => {
                         });
                         unmatchedProperties.push(app.id);
                     }
-                    // Handle agent names
                     if (app.agent_name && !agentNames.has(app.agent_name)) {
                         uniqueAgents.push(app.agent_name);
                         agentNames.add(app.agent_name);
                     }
                 });
 
-                // Log unmatched properties
                 if (unmatchedProperties.length > 0) {
                     console.warn('Applications with missing or invalid property data:', unmatchedProperties);
                 }
 
-                // Sort properties, handling null/undefined property_name
                 uniqueProperties.sort((a, b) =>
                     (a.property_name || a.property_id || '').localeCompare(b.property_name || b.property_id || '')
                 );
                 uniqueAgents.sort();
 
-                // Log unique properties and agents
                 console.log('Unique properties:', uniqueProperties);
                 console.log('Unique agents:', uniqueAgents);
 
@@ -327,6 +323,35 @@ const ApplicationsReviewDashboard = () => {
         };
         fetchApplicationData();
     }, []);
+
+    const recommendationData = useMemo(() => {
+        const counts: Record<string, number> = {};
+        applications.forEach(app => {
+            const rec = app.recommendation || 'N/A';
+            counts[rec] = (counts[rec] || 0) + 1;
+        });
+        return Object.entries(counts).map(([name, value]) => ({ name, value }));
+    }, [applications]);
+
+    const propertyData = useMemo(() => {
+        const counts: Record<string, number> = {};
+        applications.forEach(app => {
+            const propName = app.property?.property_name || app.property?.property_id || 'N/A';
+            counts[propName] = (counts[propName] || 0) + 1;
+        });
+        return Object.entries(counts).map(([name, value]) => ({ name, value }));
+    }, [applications]);
+
+    const agentData = useMemo(() => {
+        const counts: Record<string, number> = {};
+        applications.forEach(app => {
+            const agentName = app.agent_name || 'N/A';
+            counts[agentName] = (counts[agentName] || 0) + 1;
+        });
+        return Object.entries(counts).map(([name, value]) => ({ name, value }));
+    }, [applications]);
+
+    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF19B7'];
 
     const handleFilterChange = (key: keyof FilterState, value: string) => {
         setFilters((prev) => ({ ...prev, [key]: value }));
@@ -350,8 +375,96 @@ const ApplicationsReviewDashboard = () => {
         });
     }, [applications, filters]);
 
+    // Improved Handle Logout
+    const handleSignOut = async () => {
+        setLoading(true);
+        try {
+            const { error } = await supabase.auth.signOut();
+            if (error) {
+                console.error('Logout error:', error.message);
+                setError(`Logout failed: ${error.message}`);
+            } else {
+                console.log('Logout successful');
+                router.push('/admin/login');
+            }
+        } catch (err) {
+            console.error('Unexpected logout error:', err);
+            setError('An unexpected error occurred during logout.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     if (loading) {
-        return <div className="flex justify-center items-center h-screen"><p>Loading applications...</p></div>;
+        return (
+            <div className="flex justify-center items-center h-screen bg-gray-50">
+                <div className="rubiks-cube-loader">
+                    <div className="cube">
+                        <div className="face front bg-blue-500"></div>
+                        <div className="face back bg-red-500"></div>
+                        <div className="face left bg-green-500"></div>
+                        <div className="face right bg-yellow-500"></div>
+                        <div className="face top bg-white-500"></div>
+                        <div className="face bottom bg-orange-500"></div>
+                    </div>
+                </div>
+                <style jsx>{`
+                    .rubiks-cube-loader {
+                        width: 100px;
+                        height: 100px;
+                        perspective: 1000px;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                    }
+
+                    .cube {
+                        position: relative;
+                        width: 100%;
+                        height: 100%;
+                        transform-style: preserve-3d;
+                        animation: rotateCube 3s infinite linear;
+                    }
+
+                    .face {
+                        position: absolute;
+                        width: 100px;
+                        height: 100px;
+                        border: 2px solid rgba(0, 0, 0, 0.1);
+                        box-sizing: border-box;
+                    }
+
+                    .front {
+                        transform: translateZ(50px);
+                    }
+
+                    .back {
+                        transform: translateZ(-50px) rotateY(180deg);
+                    }
+
+                    .left {
+                        transform: rotateY(-90deg) translateZ(50px);
+                    }
+
+                    .right {
+                        transform: rotateY(90deg) translateZ(50px);
+                    }
+
+                    .top {
+                        transform: rotateX(90deg) translateZ(50px);
+                    }
+
+                    .bottom {
+                        transform: rotateX(-90deg) translateZ(50px);
+                    }
+
+                    @keyframes rotateCube {
+                        0% { transform: rotateX(0deg) rotateY(0deg); }
+                        100% { transform: rotateX(360deg) rotateY(360deg); }
+                    }
+                `}</style>
+            </div>
+        );
     }
 
     if (error) {
@@ -364,103 +477,200 @@ const ApplicationsReviewDashboard = () => {
     }
 
     return (
-        <div className="bg-gray-50/50 min-h-screen p-4 sm:p-6 lg:p-8">
-            <main className="max-w-7xl mx-auto">
-                <header className="mb-8">
-                    <h1 className="text-3xl font-bold tracking-tight text-gray-900">Applications Review</h1>
-                    <p className="mt-1 text-md text-gray-600">Review, filter, and search all submitted tenant assessments.</p>
-                </header>
-                {metaData.properties.length === 0 && (
-                    <div className="mb-6 p-4 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-lg">
-                        <h2 className="font-bold">Warning</h2>
-                        <p>No properties found. Please ensure properties are added in the database.</p>
-                    </div>
-                )}
-                <Card className="mb-6">
-                    <CardContent className="p-4 flex flex-col sm:flex-row gap-4">
-                        <div className="relative flex-grow">
-                            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                            <Input
-                                placeholder="Search by prospect name or phone..."
-                                className="pl-9"
-                                value={filters.search}
-                                onChange={(e) => handleFilterChange('search', e.target.value)}
-                            />
-                        </div>
-                        <div className="flex gap-2 sm:gap-4 flex-wrap">
-                            <DropdownFilter
-                                label="Status"
-                                value={filters.recommendation}
-                                options={[{ id: 'approve', name: 'Approve' }, { id: 'maybe', name: 'Maybe' }, { id: 'hell-no', name: 'Hell No' }]}
-                                onSelect={(v) => handleFilterChange('recommendation', v)}
-                            />
-                            <DropdownFilter
-                                label="Property"
-                                value={filters.propertyId}
-                                options={metaData.properties}
-                                onSelect={(v) => handleFilterChange('propertyId', v)}
-                                displayKey="property_name"
-                                valueKey="property_id"
-                            />
-                            <DropdownFilter
-                                label="Agent"
-                                value={filters.agentName}
-                                options={metaData.agents.map((a) => ({ id: a, name: a }))}
-                                onSelect={(v) => handleFilterChange('agentName', v)}
-                            />
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card>
+        <div className="min-h-screen bg-gray-50 p-6 md:p-10">
+            <div className="flex justify-between items-start mb-6">
+                <h1 className="text-3xl font-bold text-gray-900">Tenant Application Review Dashboard</h1>
+                <Button
+                    onClick={handleSignOut}
+                    disabled={loading}
+                    className="bg-red-500 hover:bg-red-600 text-white flex items-center gap-2 px-3 py-1.5 text-sm rounded-md shadow-sm"
+                >
+                    {loading ? (
+                        <>
+                            <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
+                            Logging out...
+                        </>
+                    ) : (
+                        <>
+                            <LogOutIcon className="h-4 w-4" />
+                            Logout
+                        </>
+                    )}
+                </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+                {/* Analytics Overview */}
+                <Card className="h-full">
                     <CardHeader>
-                        <CardTitle>All Applications</CardTitle>
-                        <CardDescription>Found {filteredApplications.length} of {applications.length} total applications.</CardDescription>
+                        <CardTitle>Recommendation Distribution</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Prospect</TableHead>
-                                    <TableHead className="hidden md:table-cell">Property</TableHead>
-                                    <TableHead className="hidden lg:table-cell">Submitted</TableHead>
-                                    <TableHead className="hidden sm:table-cell">Agent</TableHead>
-                                    <TableHead>Recommendation</TableHead>
-                                    <TableHead><span className="sr-only">Actions</span></TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {filteredApplications.length > 0 ? (
-                                    filteredApplications.map((app) => (
-                                        <TableRow key={app.id}>
-                                            <TableCell className="font-medium">
-                                                <div className="flex flex-col">
-                                                    <span>{app.prospect?.name || 'Unknown'}</span>
-                                                    <span className="text-xs text-gray-500 md:hidden">{app.property?.property_name || app.property?.property_id || 'No Property'}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="hidden md:table-cell">
-                                                {app.property?.property_name || app.property?.property_id || 'No Property'} - Unit {app.unit?.unit_name || 'N/A'}
-                                            </TableCell>
-                                            <TableCell className="hidden lg:table-cell">{new Date(app.created_at).toLocaleDateString()}</TableCell>
-                                            <TableCell className="hidden sm:table-cell">{app.agent_name || 'N/A'}</TableCell>
-                                            <TableCell><RecommendationBadge recommendation={app.recommendation} /></TableCell>
-                                            <TableCell className="text-right">
-                                                <Button variant="ghost" size="sm" onClick={() => handleViewDetails(app)}>
-                                                    View Details
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                ) : (
-                                    <TableRow>
-                                        <TableCell colSpan={6} className="h-24 text-center">No applications match the current filters.</TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
+                    <CardContent className="h-64 flex items-center justify-center p-0">
+                        {filteredApplications.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={recommendationData}
+                                        cx="50%"
+                                        cy="50%"
+                                        labelLine={false}
+                                        outerRadius={80}
+                                        fill="#8884d8"
+                                        dataKey="value"
+                                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                                    >
+                                        {recommendationData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip formatter={(value, name) => [`${value} applications`, name]} />
+                                    <Legend />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <p className="text-gray-500 text-center">No data to display.</p>
+                        )}
                     </CardContent>
                 </Card>
-            </main>
+
+                {/* Applications per Property */}
+                <Card className="h-full">
+                    <CardHeader>
+                        <CardTitle>Applications per Property</CardTitle>
+                    </CardHeader>
+                    <CardContent className="h-64 p-0">
+                        {propertyData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={propertyData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="name" angle={-15} textAnchor="end" height={50} interval={0} />
+                                    <YAxis allowDecimals={false} />
+                                    <Tooltip formatter={(value, name) => [`${value} applications`]} />
+                                    <Legend />
+                                    <Bar dataKey="value" fill="#82ca9d" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <p className="text-gray-500 text-center mt-8">No data to display.</p>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Applications per Agent */}
+                <Card className="h-full">
+                    <CardHeader>
+                        <CardTitle>Applications per Agent</CardTitle>
+                    </CardHeader>
+                    <CardContent className="h-64 p-0">
+                        {agentData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={agentData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="name" angle={-15} textAnchor="end" height={50} interval={0} />
+                                    <YAxis allowDecimals={false} />
+                                    <Tooltip formatter={(value, name) => [`${value} applications`]} />
+                                    <Legend />
+                                    <Bar dataKey="value" fill="#a4de6c" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <p className="text-gray-500 text-center mt-8">No data to display.</p>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+
+            {metaData.properties.length === 0 && (
+                <div className="mb-6 p-4 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-lg">
+                    <h2 className="font-bold">Warning</h2>
+                    <p>No properties found. Please ensure properties are added in the database.</p>
+                </div>
+            )}
+            <Card className="mb-6">
+                <CardContent className="p-4 flex flex-col sm:flex-row gap-4">
+                    <div className="relative flex-grow">
+                        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                            placeholder="Search by prospect name or phone..."
+                            className="pl-9"
+                            value={filters.search}
+                            onChange={(e) => handleFilterChange('search', e.target.value)}
+                        />
+                    </div>
+                    <div className="flex gap-2 sm:gap-4 flex-wrap">
+                        <DropdownFilter
+                            label="Status"
+                            value={filters.recommendation}
+                            options={[{ id: 'approve', name: 'Approve' }, { id: 'maybe', name: 'Maybe' }, { id: 'hell-no', name: 'Hell No' }]}
+                            onSelect={(v) => handleFilterChange('recommendation', v)}
+                        />
+                        <DropdownFilter
+                            label="Property"
+                            value={filters.propertyId}
+                            options={metaData.properties}
+                            onSelect={(v) => handleFilterChange('propertyId', v)}
+                            displayKey="property_name"
+                            valueKey="property_id"
+                        />
+                        <DropdownFilter
+                            label="Agent"
+                            value={filters.agentName}
+                            options={metaData.agents.map((a) => ({ id: a, name: a }))}
+                            onSelect={(v) => handleFilterChange('agentName', v)}
+                        />
+                    </div>
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <CardTitle>All Applications</CardTitle>
+                    <CardDescription>Found {filteredApplications.length} of {applications.length} total applications.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Prospect</TableHead>
+                                <TableHead className="hidden md:table-cell">Property</TableHead>
+                                <TableHead className="hidden lg:table-cell">Submitted</TableHead>
+                                <TableHead className="hidden sm:table-cell">Agent</TableHead>
+                                <TableHead>Recommendation</TableHead>
+                                <TableHead><span className="sr-only">Actions</span></TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {filteredApplications.length > 0 ? (
+                                filteredApplications.map((app) => (
+                                    <TableRow key={app.id}>
+                                        <TableCell className="font-medium">
+                                            <div className="flex flex-col">
+                                                <span>{app.prospect?.name || 'Unknown'}</span>
+                                                <span className="text-xs text-gray-500 md:hidden">{app.property?.property_name || app.property?.property_id || 'No Property'}</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="hidden md:table-cell">
+                                            {app.property?.property_name || app.property?.property_id || 'No Property'} - Unit {app.unit?.unit_name || 'N/A'}
+                                        </TableCell>
+                                        <TableCell className="hidden lg:table-cell">{new Date(app.created_at).toLocaleDateString()}</TableCell>
+                                        <TableCell className="hidden sm:table-cell">{app.agent_name || 'N/A'}</TableCell>
+                                        <TableCell><RecommendationBadge recommendation={app.recommendation} /></TableCell>
+                                        <TableCell className="text-right">
+                                            <Button variant="ghost" size="sm" onClick={() => handleViewDetails(app)}>
+                                                View Details
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={6} className="h-24 text-center">No applications match the current filters.</TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+
             {isModalOpen && selectedApp && (
                 <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                     <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
