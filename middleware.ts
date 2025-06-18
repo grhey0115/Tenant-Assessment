@@ -7,7 +7,7 @@ export async function middleware(req: NextRequest) {
   const { response: res, session } = await updateSession(req);
 
   // Ensure fresh session data by re-fetching if needed
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { session: freshSession } } = await supabase.auth.getSession();
 
   // Protect all /admin routes except login
