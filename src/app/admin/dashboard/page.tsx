@@ -88,7 +88,7 @@ const RecommendationBadge = ({ recommendation }: { recommendation: string | null
     const iconCls = "h-3 w-3 mr-1.5";
     switch (recommendation) {
         case 'approve':
-            return <span className={`${baseClasses} bg-green-100 text-green-800 border-green-300 flex items-center`}><ThumbsUpIcon className={iconCls} />APPROVE</span>;
+            return <span className={`${baseClasses} bg-green-100 text-green-800 border-green-300 flex items-center`}><ThumbsUpIcon className={`${iconCls} text-green-600`} />APPROVE</span>;
         case 'maybe':
             return <span className={`${baseClasses} bg-yellow-100 text-yellow-800 border-yellow-300 flex items-center`}><CircleHelpIcon className={iconCls} />MAYBE</span>;
         case 'hell-no':
@@ -160,10 +160,17 @@ const DropdownFilter = ({ label, value, options, onSelect, displayKey = 'name', 
         (o) => o && typeof o === 'object' && o[valueKey] !== null && o[valueKey] !== undefined
     );
 
+    // Proper pluralization
+    const getPluralLabel = (label: string) => {
+        if (label === 'Status') return 'Statuses';
+        if (label === 'Property') return 'Properties';
+        return `${label}s`;
+    };
+
     const selectedOption = validOptions.find((o) => o[valueKey] === value);
     const displayValue = value === 'all'
-        ? `All ${label}s`
-        : selectedOption?.[displayKey] || selectedOption?.[valueKey] || `All ${label}s`;
+        ? `All ${getPluralLabel(label)}`
+        : selectedOption?.[displayKey] || selectedOption?.[valueKey] || `All ${getPluralLabel(label)}`;
 
     console.log(`DropdownFilter (${label}): Selected value`, value, 'Display value', displayValue, 'Selected option', selectedOption);
 
@@ -175,7 +182,7 @@ const DropdownFilter = ({ label, value, options, onSelect, displayKey = 'name', 
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuItem onClick={() => onSelect('all')}>All {label}s</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSelect('all')}>All {getPluralLabel(label)}</DropdownMenuItem>
                 {validOptions.length > 0 ? (
                     validOptions.map((option) => (
                         <DropdownMenuItem
@@ -186,7 +193,7 @@ const DropdownFilter = ({ label, value, options, onSelect, displayKey = 'name', 
                         </DropdownMenuItem>
                     ))
                 ) : (
-                    <DropdownMenuItem disabled>No {label}s available</DropdownMenuItem>
+                    <DropdownMenuItem disabled>No {getPluralLabel(label)} available</DropdownMenuItem>
                 )}
             </DropdownMenuContent>
         </DropdownMenu>
@@ -202,7 +209,78 @@ const ApplicationsReviewDashboard = () => {
     const [error, setError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedApp, setSelectedApp] = useState<ApplicationData | null>(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(10); // Default items per page
+    const [enlargedChart, setEnlargedChart] = useState<string | null>(null);
+    const [authLoading, setAuthLoading] = useState(true);
     const router = useRouter();
+
+    // Helper function to format dates
+    const formatDate = (dateString: string) => {
+        const date = new Date(dateString);
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${month}/${day}/${year}`;
+    };
+
+    const formatDateTime = (dateString: string) => {
+        const date = new Date(dateString);
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const ampm = date.getHours() >= 12 ? 'PM' : 'AM';
+        const displayHours = String(date.getHours() % 12 || 12).padStart(2, '0');
+        return `${month}/${day}/${year} ${displayHours}:${minutes} ${ampm}`;
+    };
+
+    // Check authentication on component mount
+    useEffect(() => {
+        const checkAuth = async () => {
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession();
+                
+                if (error) {
+                    console.error('Auth check error:', error);
+                    router.push('/admin/login');
+                    return;
+                }
+
+                if (!session) {
+                    console.log('No session found, redirecting to login');
+                    router.push('/admin/login');
+                    return;
+                }
+
+                console.log('User authenticated:', session.user.email);
+                setAuthLoading(false);
+            } catch (err) {
+                console.error('Unexpected auth error:', err);
+                router.push('/admin/login');
+            }
+        };
+
+        checkAuth();
+
+        // Set up real-time auth listener
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            async (event, session) => {
+                console.log('Auth state changed:', event, session?.user?.email);
+                
+                if (event === 'SIGNED_OUT' || !session) {
+                    console.log('User signed out, redirecting to login');
+                    router.push('/admin/login');
+                }
+            }
+        );
+
+        // Cleanup subscription on unmount
+        return () => {
+            subscription.unsubscribe();
+        };
+    }, [router]);
 
     useEffect(() => {
         const fetchApplicationData = async () => {
@@ -324,42 +402,24 @@ const ApplicationsReviewDashboard = () => {
         fetchApplicationData();
     }, []);
 
-    const recommendationData = useMemo(() => {
-        const counts: Record<string, number> = {};
-        applications.forEach(app => {
-            const rec = app.recommendation || 'N/A';
-            counts[rec] = (counts[rec] || 0) + 1;
-        });
-        return Object.entries(counts).map(([name, value]) => ({ name, value }));
-    }, [applications]);
-
-    const propertyData = useMemo(() => {
-        const counts: Record<string, number> = {};
-        applications.forEach(app => {
-            const propName = app.property?.property_name || app.property?.property_id || 'N/A';
-            counts[propName] = (counts[propName] || 0) + 1;
-        });
-        return Object.entries(counts).map(([name, value]) => ({ name, value }));
-    }, [applications]);
-
-    const agentData = useMemo(() => {
-        const counts: Record<string, number> = {};
-        applications.forEach(app => {
-            const agentName = app.agent_name || 'N/A';
-            counts[agentName] = (counts[agentName] || 0) + 1;
-        });
-        return Object.entries(counts).map(([name, value]) => ({ name, value }));
-    }, [applications]);
-
-    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF19B7'];
+    const COLORS = ['#10B981', '#F59E0B', '#EF4444', '#6B7280', '#8B5CF6', '#06B6D4'];
 
     const handleFilterChange = (key: keyof FilterState, value: string) => {
         setFilters((prev) => ({ ...prev, [key]: value }));
+        setCurrentPage(1); // Reset to first page when filters change
     };
 
     const handleViewDetails = (app: ApplicationData) => {
         setSelectedApp(app);
         setIsModalOpen(true);
+    };
+
+    const handleChartClick = (chartType: string) => {
+        setEnlargedChart(chartType);
+    };
+
+    const handleCloseEnlargedChart = () => {
+        setEnlargedChart(null);
     };
 
     const filteredApplications = useMemo(() => {
@@ -374,6 +434,47 @@ const ApplicationsReviewDashboard = () => {
             return matchesSearch && matchesRecommendation && matchesProperty && matchesAgent;
         });
     }, [applications, filters]);
+
+    const recommendationData = useMemo(() => {
+        const counts: Record<string, number> = {};
+        filteredApplications.forEach(app => {
+            let rec = app.recommendation || 'N/A';
+            // Fix capitalization for display
+            if (rec === 'approve') rec = 'Approve';
+            if (rec === 'maybe') rec = 'Maybe';
+            if (rec === 'hell-no') rec = 'Hell No';
+            counts[rec] = (counts[rec] || 0) + 1;
+        });
+        return Object.entries(counts).map(([name, value]) => ({ name, value }));
+    }, [filteredApplications]);
+
+    const propertyData = useMemo(() => {
+        const counts: Record<string, number> = {};
+        filteredApplications.forEach(app => {
+            const propName = app.property?.property_name || app.property?.property_id || 'N/A';
+            counts[propName] = (counts[propName] || 0) + 1;
+        });
+        return Object.entries(counts).map(([name, value]) => ({ name, value }));
+    }, [filteredApplications]);
+
+    const agentData = useMemo(() => {
+        const counts: Record<string, number> = {};
+        filteredApplications.forEach(app => {
+            const agentName = app.agent_name || 'N/A';
+            counts[agentName] = (counts[agentName] || 0) + 1;
+        });
+        return Object.entries(counts).map(([name, value]) => ({ name, value }));
+    }, [filteredApplications]);
+
+    // Pagination Logic
+    const indexOfLastItem = currentPage * itemsPerPage;
+    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+    const currentApplications = filteredApplications.slice(indexOfFirstItem, indexOfLastItem);
+    const totalPages = Math.ceil(filteredApplications.length / itemsPerPage);
+
+    const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
+    const nextPage = () => currentPage < totalPages && setCurrentPage(currentPage + 1);
+    const prevPage = () => currentPage > 1 && setCurrentPage(currentPage - 1);
 
     // Improved Handle Logout
     const handleSignOut = async () => {
@@ -395,74 +496,25 @@ const ApplicationsReviewDashboard = () => {
         }
     };
 
+    // Don't render anything while checking auth
+    if (authLoading) {
+        return (
+            <div className="flex justify-center items-center h-screen bg-gray-50">
+                <div className="text-center">
+                    <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+                    <p className="text-gray-600">Checking authentication...</p>
+                </div>
+            </div>
+        );
+    }
+
     if (loading) {
         return (
             <div className="flex justify-center items-center h-screen bg-gray-50">
-                <div className="rubiks-cube-loader">
-                    <div className="cube">
-                        <div className="face front bg-blue-500"></div>
-                        <div className="face back bg-red-500"></div>
-                        <div className="face left bg-green-500"></div>
-                        <div className="face right bg-yellow-500"></div>
-                        <div className="face top bg-white-500"></div>
-                        <div className="face bottom bg-orange-500"></div>
-                    </div>
+                <div className="text-center">
+                    <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading dashboard...</p>
                 </div>
-                <style jsx>{`
-                    .rubiks-cube-loader {
-                        width: 100px;
-                        height: 100px;
-                        perspective: 1000px;
-                        display: flex;
-                        justify-content: center;
-                        align-items: center;
-                    }
-
-                    .cube {
-                        position: relative;
-                        width: 100%;
-                        height: 100%;
-                        transform-style: preserve-3d;
-                        animation: rotateCube 3s infinite linear;
-                    }
-
-                    .face {
-                        position: absolute;
-                        width: 100px;
-                        height: 100px;
-                        border: 2px solid rgba(0, 0, 0, 0.1);
-                        box-sizing: border-box;
-                    }
-
-                    .front {
-                        transform: translateZ(50px);
-                    }
-
-                    .back {
-                        transform: translateZ(-50px) rotateY(180deg);
-                    }
-
-                    .left {
-                        transform: rotateY(-90deg) translateZ(50px);
-                    }
-
-                    .right {
-                        transform: rotateY(90deg) translateZ(50px);
-                    }
-
-                    .top {
-                        transform: rotateX(90deg) translateZ(50px);
-                    }
-
-                    .bottom {
-                        transform: rotateX(-90deg) translateZ(50px);
-                    }
-
-                    @keyframes rotateCube {
-                        0% { transform: rotateX(0deg) rotateY(0deg); }
-                        100% { transform: rotateX(360deg) rotateY(360deg); }
-                    }
-                `}</style>
             </div>
         );
     }
@@ -505,26 +557,28 @@ const ApplicationsReviewDashboard = () => {
                     <CardHeader>
                         <CardTitle>Recommendation Distribution</CardTitle>
                     </CardHeader>
-                    <CardContent className="h-64 flex items-center justify-center p-0">
+                    <CardContent 
+                        className="h-64 flex items-center justify-center p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                        onClick={() => handleChartClick('recommendation')}
+                    >
                         {filteredApplications.length > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
+                                <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                                     <Pie
                                         data={recommendationData}
                                         cx="50%"
                                         cy="50%"
                                         labelLine={false}
-                                        outerRadius={80}
+                                        outerRadius={90}
                                         fill="#8884d8"
                                         dataKey="value"
-                                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                                     >
                                         {recommendationData.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                         ))}
                                     </Pie>
                                     <Tooltip formatter={(value, name) => [`${value} applications`, name]} />
-                                    <Legend />
+                                    <Legend wrapperStyle={{ fontSize: 12, paddingTop: 10 }} />
                                 </PieChart>
                             </ResponsiveContainer>
                         ) : (
@@ -538,15 +592,31 @@ const ApplicationsReviewDashboard = () => {
                     <CardHeader>
                         <CardTitle>Applications per Property</CardTitle>
                     </CardHeader>
-                    <CardContent className="h-64 p-0">
+                    <CardContent 
+                        className="h-64 p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                        onClick={() => handleChartClick('property')}
+                    >
                         {propertyData.length > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={propertyData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                <BarChart 
+                                    data={propertyData} 
+                                    margin={{ top: 20, right: 40, left: 10, bottom: 60 }}
+                                >
                                     <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="name" angle={-15} textAnchor="end" height={50} interval={0} />
-                                    <YAxis allowDecimals={false} />
-                                    <Tooltip formatter={(value, name) => [`${value} applications`]} />
-                                    <Legend />
+                                    <XAxis 
+                                        dataKey="name" 
+                                        angle={-30} 
+                                        textAnchor="end" 
+                                        height={60} 
+                                        interval={0} 
+                                        tick={{ fontSize: 12 }}
+                                        tickMargin={10}
+                                    />
+                                    <YAxis 
+                                        allowDecimals={false} 
+                                        tick={{ fontSize: 12 }}
+                                    />
+                                    <Tooltip formatter={(value, name) => [value]} />
                                     <Bar dataKey="value" fill="#82ca9d" />
                                 </BarChart>
                             </ResponsiveContainer>
@@ -561,15 +631,31 @@ const ApplicationsReviewDashboard = () => {
                     <CardHeader>
                         <CardTitle>Applications per Agent</CardTitle>
                     </CardHeader>
-                    <CardContent className="h-64 p-0">
+                    <CardContent 
+                        className="h-64 p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                        onClick={() => handleChartClick('agent')}
+                    >
                         {agentData.length > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={agentData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                <BarChart 
+                                    data={agentData} 
+                                    margin={{ top: 20, right: 40, left: 10, bottom: 60 }}
+                                >
                                     <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="name" angle={-15} textAnchor="end" height={50} interval={0} />
-                                    <YAxis allowDecimals={false} />
-                                    <Tooltip formatter={(value, name) => [`${value} applications`]} />
-                                    <Legend />
+                                    <XAxis 
+                                        dataKey="name" 
+                                        angle={-30} 
+                                        textAnchor="end" 
+                                        height={60} 
+                                        interval={0} 
+                                        tick={{ fontSize: 12 }}
+                                        tickMargin={10}
+                                    />
+                                    <YAxis 
+                                        allowDecimals={false} 
+                                        tick={{ fontSize: 12 }}
+                                    />
+                                    <Tooltip formatter={(value, name) => [value]} />
                                     <Bar dataKey="value" fill="#a4de6c" />
                                 </BarChart>
                             </ResponsiveContainer>
@@ -639,8 +725,8 @@ const ApplicationsReviewDashboard = () => {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {filteredApplications.length > 0 ? (
-                                filteredApplications.map((app) => (
+                            {currentApplications.length > 0 ? (
+                                currentApplications.map((app) => (
                                     <TableRow key={app.id}>
                                         <TableCell className="font-medium">
                                             <div className="flex flex-col">
@@ -651,7 +737,9 @@ const ApplicationsReviewDashboard = () => {
                                         <TableCell className="hidden md:table-cell">
                                             {app.property?.property_name || app.property?.property_id || 'No Property'} - Unit {app.unit?.unit_name || 'N/A'}
                                         </TableCell>
-                                        <TableCell className="hidden lg:table-cell">{new Date(app.created_at).toLocaleDateString()}</TableCell>
+                                        <TableCell className="hidden lg:table-cell">
+                                            {formatDate(app.created_at)}
+                                        </TableCell>
                                         <TableCell className="hidden sm:table-cell">{app.agent_name || 'N/A'}</TableCell>
                                         <TableCell><RecommendationBadge recommendation={app.recommendation} /></TableCell>
                                         <TableCell className="text-right">
@@ -668,6 +756,37 @@ const ApplicationsReviewDashboard = () => {
                             )}
                         </TableBody>
                     </Table>
+                    {/* Pagination Controls */}
+                    <div className="flex justify-between items-center mt-4">
+                        <Button
+                            variant="outline"
+                            onClick={prevPage}
+                            disabled={currentPage === 1}
+                            className="px-4 py-2"
+                        >
+                            Previous
+                        </Button>
+                        <div className="flex gap-2">
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                                <Button
+                                    key={page}
+                                    variant={currentPage === page ? "default" : "outline"}
+                                    onClick={() => paginate(page)}
+                                    className="px-3 py-1 text-sm"
+                                >
+                                    {page}
+                                </Button>
+                            ))}
+                        </div>
+                        <Button
+                            variant="outline"
+                            onClick={nextPage}
+                            disabled={currentPage === totalPages}
+                            className="px-4 py-2"
+                        >
+                            Next
+                        </Button>
+                    </div>
                 </CardContent>
             </Card>
 
@@ -680,7 +799,7 @@ const ApplicationsReviewDashboard = () => {
                         <DialogHeader>
                             <DialogTitle className="text-2xl">{selectedApp.prospect?.name || 'Application Details'}</DialogTitle>
                             <DialogDescription>
-                                Assessment for {selectedApp.property?.property_name || selectedApp.property?.property_id || 'No Property'} - Unit {selectedApp.unit?.unit_name || 'N/A'} submitted on {new Date(selectedApp.created_at).toLocaleString()}
+                                Assessment for {selectedApp.property?.property_name || selectedApp.property?.property_id || 'No Property'} - Unit {selectedApp.unit?.unit_name || 'N/A'} submitted on {formatDateTime(selectedApp.created_at)}
                             </DialogDescription>
                         </DialogHeader>
                         <div className="grid md:grid-cols-2 gap-8 mt-4">
@@ -727,6 +846,97 @@ const ApplicationsReviewDashboard = () => {
                         </div>
                         <DialogFooter className="mt-4">
                             <Button variant="outline" onClick={() => setIsModalOpen(false)}>Close</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
+
+            {/* Enlarged Chart Modal */}
+            {enlargedChart && (
+                <Dialog open={!!enlargedChart} onOpenChange={handleCloseEnlargedChart}>
+                    <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+                        <DialogHeader>
+                            <DialogTitle>
+                                {enlargedChart === 'recommendation' ? 'Recommendation Distribution' :
+                                 enlargedChart === 'property' ? 'Applications per Property' :
+                                 enlargedChart === 'agent' ? 'Applications per Agent' : 'Chart'}
+                            </DialogTitle>
+                        </DialogHeader>
+                        <div className="h-96 w-full">
+                            {enlargedChart === 'recommendation' && (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                                        <Pie
+                                            data={recommendationData}
+                                            cx="50%"
+                                            cy="50%"
+                                            labelLine={false}
+                                            outerRadius={150}
+                                            fill="#8884d8"
+                                            dataKey="value"
+                                        >
+                                            {recommendationData.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip formatter={(value, name) => [`${value} applications`, name]} />
+                                        <Legend wrapperStyle={{ fontSize: 14, paddingTop: 20 }} />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            )}
+                            {enlargedChart === 'property' && (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart 
+                                        data={propertyData} 
+                                        margin={{ top: 20, right: 40, left: 10, bottom: 80 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis 
+                                            dataKey="name" 
+                                            angle={-30} 
+                                            textAnchor="end" 
+                                            height={80} 
+                                            interval={0} 
+                                            tick={{ fontSize: 14 }}
+                                            tickMargin={15}
+                                        />
+                                        <YAxis 
+                                            allowDecimals={false} 
+                                            tick={{ fontSize: 14 }}
+                                        />
+                                        <Tooltip formatter={(value, name) => [value]} />
+                                        <Bar dataKey="value" fill="#82ca9d" />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            )}
+                            {enlargedChart === 'agent' && (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart 
+                                        data={agentData} 
+                                        margin={{ top: 20, right: 40, left: 10, bottom: 80 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis 
+                                            dataKey="name" 
+                                            angle={-30} 
+                                            textAnchor="end" 
+                                            height={80} 
+                                            interval={0} 
+                                            tick={{ fontSize: 14 }}
+                                            tickMargin={15}
+                                        />
+                                        <YAxis 
+                                            allowDecimals={false} 
+                                            tick={{ fontSize: 14 }}
+                                        />
+                                        <Tooltip formatter={(value, name) => [value]} />
+                                        <Bar dataKey="value" fill="#a4de6c" />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            )}
+                        </div>
+                        <DialogFooter className="mt-4">
+                            <Button variant="outline" onClick={handleCloseEnlargedChart}>Close</Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
