@@ -166,6 +166,7 @@ const App = () => {
     const [loadingApplicants, setLoadingApplicants] = useState(false);
     const [loadingNotes, setLoadingNotes] = useState(false);
     const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
+    const [confirmMove, setConfirmMove] = useState<{ applicantId: number | null, nextStage: string | null, open: boolean }>({ applicantId: null, nextStage: null, open: false });
 
     const stages = [
         { id: 'lead', name: 'New Leads', color: 'bg-blue-500', icon: 'userPlus' },
@@ -256,10 +257,14 @@ const App = () => {
         setTimeout(() => setToast({ message: '', visible: false }), 2500);
     };
 
-    const handleMoveApplicant = async (applicantId: number, currentStage: string) => {
+    const handleMoveApplicant = async (applicantId: number, currentStage: string, skipConfirm = false) => {
         const currentStageIndex = stages.findIndex(s => s.id === currentStage);
         if (currentStageIndex < stages.length - 1) {
             const nextStage = stages[currentStageIndex + 1].id;
+            if (!skipConfirm) {
+                setConfirmMove({ applicantId, nextStage, open: true });
+                return;
+            }
             const { error } = await supabase
                 .from('applicants')
                 .update({ stage: nextStage, daysInStage: 0 })
@@ -420,12 +425,14 @@ const App = () => {
         );
     };
 
-    const ApplicantCard = ({ applicant, onMove }: { applicant: Applicant & { id: number }, onMove: (id: number, stage: string) => void }) => {
+    const ApplicantCard = ({ applicant, onMove }: { applicant: Applicant & { id: number }, onMove: (id: number, stage: string, skipConfirm?: boolean) => void }) => {
         const handleMove = (e: React.MouseEvent) => {
             e.stopPropagation();
             onMove(applicant.id, applicant.stage);
         };
-
+        const currentStageIndex = stages.findIndex(s => s.id === applicant.stage);
+        const nextStage = stages[currentStageIndex + 1];
+        const nextStageColor = nextStage ? nextStage.color : 'bg-blue-600';
         return (
             <div
                 className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border-l-4 cursor-pointer"
@@ -501,12 +508,12 @@ const App = () => {
                                     <Icon name="externalLink" className="h-4 w-4" />
                                 </button>
                             </div>
-                            {applicant.stage !== 'approved' && (
+                            {applicant.stage !== 'approved' && nextStage && (
                                 <button
                                     onClick={handleMove}
-                                    className="w-full px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors"
+                                    className={`w-full px-3 py-1.5 text-white rounded-md text-sm font-semibold hover:opacity-90 transition-colors ${nextStageColor}`}
                                 >
-                                    Move to {stages[stages.findIndex(s => s.id === applicant.stage) + 1]?.name}
+                                    Move to {nextStage.name}
                                 </button>
                             )}
                         </div>
@@ -948,13 +955,35 @@ const App = () => {
       };
 
     const Toast = ({ message, visible }: { message: string; visible: boolean }) => (
+      <div
+        className={`fixed top-6 right-6 z-50 transition-all duration-300 ${
+          visible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <div className="bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg font-medium">
+          {message}
+        </div>
+      </div>
+    );
+
+    const ConfirmToast = ({ open, stageName, onConfirm, onCancel }: { open: boolean, stageName: string, onConfirm: () => void, onCancel: () => void }) => (
         <div
-            className={`fixed top-6 right-6 z-50 transition-all duration-300 ${
-                visible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-            }`}
+            className={`fixed top-6 right-6 z-50 transition-all duration-300 ${open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
         >
-            <div className="bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg font-medium">
-                {message}
+            <div className="bg-white border border-blue-200 px-6 py-4 rounded-lg shadow-lg flex items-center space-x-4">
+                <span className="text-gray-800 font-medium">Move applicant to <span className="font-bold text-blue-700">{stageName}</span>?</span>
+                <button
+                    onClick={onConfirm}
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                >
+                    Confirm
+                </button>
+                <button
+                    onClick={onCancel}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
+                >
+                    Cancel
+                </button>
             </div>
         </div>
     );
@@ -984,6 +1013,17 @@ const App = () => {
     return (
         <div className="min-h-screen bg-gray-50 font-sans">
             <Toast message={toast.message} visible={toast.visible} />
+            <ConfirmToast
+                open={confirmMove.open}
+                stageName={stages.find(s => s.id === confirmMove.nextStage)?.name || ''}
+                onConfirm={() => {
+                    if (confirmMove.applicantId && confirmMove.nextStage) {
+                        setConfirmMove({ applicantId: null, nextStage: null, open: false });
+                        handleMoveApplicant(confirmMove.applicantId, stages[stages.findIndex(s => s.id === confirmMove.nextStage) - 1]?.id || '', true);
+                    }
+                }}
+                onCancel={() => setConfirmMove({ applicantId: null, nextStage: null, open: false })}
+            />
             <ApplicantDetailModal applicant={selectedApplicant} isOpen={isModalOpen} onClose={closeModal} />
             <AddApplicantModal isOpen={isAddModalOpen} onClose={closeAddModal} onSave={handleAddApplicant} />
             <div className="bg-white shadow-sm border-b sticky top-0 z-10">
