@@ -394,25 +394,11 @@ export default function PublicFormPage() {
                 </div>
                 <div>
                   <label htmlFor="bedrooms" className="block text-sm font-medium text-slate-700 mb-1">Bedrooms</label>
-                  <input
-                    type="text"
-                    id="bedrooms"
-                    name="bedrooms"
-                    className="w-full p-3 border border-slate-300 rounded-lg shadow-sm bg-slate-50 text-slate-900"
-                    value={bedrooms}
-                    onChange={e => setBedrooms(e.target.value)}
-                  />
+                  <input type="text" id="bedrooms" name="bedrooms" className="w-full p-3 border border-slate-300 rounded-lg shadow-sm bg-slate-100 text-slate-900" value={bedrooms} readOnly />
                 </div>
                 <div>
                   <label htmlFor="bathrooms" className="block text-sm font-medium text-slate-700 mb-1">Bathrooms</label>
-                  <input
-                    type="text"
-                    id="bathrooms"
-                    name="bathrooms"
-                    className="w-full p-3 border border-slate-300 rounded-lg shadow-sm bg-slate-50 text-slate-900"
-                    value={bathrooms}
-                    onChange={e => setBathrooms(e.target.value)}
-                  />
+                  <input type="text" id="bathrooms" name="bathrooms" className="w-full p-3 border border-slate-300 rounded-lg shadow-sm bg-slate-100 text-slate-900" value={bathrooms} readOnly />
                 </div>
                 <div>
                   <label htmlFor="agent" className="block text-sm font-medium text-slate-700 mb-1 required-ast">Agent Name</label>
