@@ -169,6 +169,8 @@ const App = () => {
     const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
     const [confirmMove, setConfirmMove] = useState<{ applicantId: number | null, nextStage: string | null, open: boolean }>({ applicantId: null, nextStage: null, open: false });
     const [isSidebarOpen, setIsSidebarOpen] = useState(false); // State for mobile sidebar
+    const [properties, setProperties] = useState<{ id: string; property_name: string; property_id: string }[]>([]);
+    const [selectedProperty, setSelectedProperty] = useState<string>('all');
 
     const stages = [
         { id: 'lead', name: 'New Leads', color: 'bg-blue-500', icon: 'userPlus' as const },
@@ -226,6 +228,14 @@ const App = () => {
         };
         fetchNotes();
     }, [selectedApplicant]);
+
+    useEffect(() => {
+        const fetchProperties = async () => {
+            const { data, error } = await supabase.from('properties').select('id, property_name, property_id').order('property_name');
+            if (!error && data) setProperties(data);
+        };
+        fetchProperties();
+    }, []);
 
     const handleAddApplicant = async (newApplicantData: any) => {
         const newApplicant = {
@@ -352,9 +362,13 @@ const App = () => {
             </div>
         );
     }
-        const filteredApplicants = selectedStage === 'all'
-            ? applicants
-            : applicants.filter(app => app.stage === selectedStage);
+        const filteredApplicants = useMemo(() => {
+            let filtered = selectedStage === 'all' ? applicants : applicants.filter(app => app.stage === selectedStage);
+            if (selectedProperty !== 'all') {
+                filtered = filtered.filter(app => app.interestedProperty === (properties.find(p => p.property_id === selectedProperty)?.property_name));
+            }
+            return filtered;
+        }, [applicants, selectedStage, selectedProperty, properties]);
         const stageCounts = stages.reduce((acc: Record<string, number>, stage) => {
             acc[stage.id] = applicants.filter(app => app.stage === stage.id).length;
             return acc;
@@ -365,6 +379,12 @@ const App = () => {
                 <div className="p-4 bg-white rounded-lg shadow-sm overflow-x-auto">
                     <h3 className="text-lg font-medium text-gray-800 mb-4">Applicant Pipeline</h3>
                     <div className="flex items-center space-x-2 md:justify-between">
+                        <button
+                            className={`text-sm font-semibold px-3 py-1.5 rounded-lg border transition-colors ${selectedStage === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-600 border-blue-600 hover:bg-blue-50'}`}
+                            onClick={() => setSelectedStage('all')}
+                        >
+                            See All
+                        </button>
                         {stages.map((stage, index) => {
                             const isSelected = selectedStage === stage.id;
                             return (
@@ -375,10 +395,10 @@ const App = () => {
                                     >
                                         <div className={`mx-auto h-12 w-12 rounded-full flex items-center justify-center text-white ${getStageColorClass(stage.id)} ${isSelected ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}>
                                             <Icon name={stage.icon} className="h-6 w-6" />
-                </div>
+                                        </div>
                                         <div className="mt-2 text-xs md:text-sm font-semibold truncate">{stage.name}</div>
                                         <div className="text-xl md:text-2xl font-bold text-gray-800">{stageCounts[stage.id] || 0}</div>
-            </div>
+                                    </div>
                                     {index < stages.length - 1 && (
                                         <Icon name="arrowRight" className="h-6 w-6 text-gray-300 mx-1 flex-shrink-0 hidden md:block" />
                                     )}
@@ -399,10 +419,17 @@ const App = () => {
                             />
                         </div>
                         <select className="px-3 py-2 border rounded-lg bg-white w-full md:w-auto">
-                            <option>All Agents</option>
+                            <option>Assigned Users</option>
                         </select>
-                        <select className="px-3 py-2 border rounded-lg bg-white w-full md:w-auto">
-                            <option>All Properties</option>
+                        <select
+                            className="px-3 py-2 border rounded-lg bg-white w-full md:w-auto"
+                            value={selectedProperty}
+                            onChange={e => setSelectedProperty(e.target.value)}
+                        >
+                            <option value="all">All Properties</option>
+                            {properties.map(p => (
+                                <option key={p.property_id} value={p.property_id}>{p.property_name}</option>
+                            ))}
                         </select>
                     </div>
                     <button
@@ -549,6 +576,9 @@ const App = () => {
 
     const ApplicantDetailModal = ({ applicant, isOpen, onClose }: { applicant: Applicant | null, isOpen: boolean, onClose: () => void }) => {
         const [tab, setTab] = useState<'details' | 'notes'>('details');
+        useEffect(() => {
+            if (applicant) setTab('details'); // Only reset tab when applicant changes
+        }, [applicant?.id]);
         if (!isOpen || !applicant) return null;
         return (
             <Modal isOpen={isOpen} onClose={onClose}>
@@ -557,10 +587,10 @@ const App = () => {
                         <h2 className="text-2xl font-bold text-gray-900">{applicant.name}</h2>
                         <p className="text-sm text-gray-500">Applicant Details and Notes</p>
                     </div>
-                     <button
-                       onClick={onClose}
-                       className="p-2 -mr-2 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                       aria-label="Close modal"
+                    <button
+                        onClick={onClose}
+                        className="p-2 -mr-2 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                        aria-label="Close modal"
                     >
                         <Icon name="x" className="h-6 w-6" />
                     </button>
@@ -569,12 +599,14 @@ const App = () => {
                     <button
                         className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${tab === 'details' ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500' : 'text-gray-600 hover:bg-gray-100'}`}
                         onClick={() => setTab('details')}
+                        type="button"
                     >
                         Details
                     </button>
                     <button
                         className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${tab === 'notes' ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500' : 'text-gray-600 hover:bg-gray-100'}`}
                         onClick={() => setTab('notes')}
+                        type="button"
                     >
                         Notes
                     </button>
@@ -638,9 +670,9 @@ const App = () => {
                                     </div>
                                 ))
                             )}
-            </div>
-                </div>
-            )}
+                        </div>
+                    </div>
+                )}
             </Modal>
         );
     };
@@ -652,29 +684,11 @@ const App = () => {
             nextAction: '', communicationPreference: '', notes: ''
         });
         const [errors, setErrors] = useState<{ [key: string]: string }>({});
-        const [properties, setProperties] = useState<{ id: string; property_name: string; property_id: string }[]>([]);
         const [units, setUnits] = useState<{ id: string; unit_name: string }[]>([]);
-        const [loadingProperties, setLoadingProperties] = useState(false);
         const [loadingUnits, setLoadingUnits] = useState(false);
 
         useEffect(() => {
             if (!isOpen) return;
-            const fetchProperties = async () => {
-                setLoadingProperties(true);
-                const { data, error } = await supabase.from('properties').select('id, property_name, property_id').order('property_name');
-                if (error) console.error('Error fetching properties:', error);
-                else if (data) setProperties(data);
-                setLoadingProperties(false);
-            };
-            fetchProperties();
-        }, [isOpen]);
-
-        useEffect(() => {
-            if (!formState.interestedProperty) {
-                setUnits([]);
-                setFormState(prev => ({ ...prev, unitType: '' }));
-                return;
-            }
             const fetchUnits = async () => {
                 setLoadingUnits(true);
                 const { data, error } = await supabase.from('units').select('id, unit_name').eq('property_id', formState.interestedProperty).eq('status', 'Available').order('unit_name');
@@ -706,11 +720,10 @@ const App = () => {
         const handleSubmit = (e: React.FormEvent) => {
             e.preventDefault();
             if (validateForm()) {
-                const selectedProperty = properties.find(p => p.property_id === formState.interestedProperty);
                 const selectedUnit = units.find(u => u.id === formState.unitType);
                 onSave({
                     ...formState,
-                    interestedProperty: selectedProperty?.property_name || formState.interestedProperty,
+                    interestedProperty: selectedUnit?.unit_name || formState.interestedProperty,
                     unitType: selectedUnit?.unit_name || formState.unitType
                 });
             }
@@ -738,7 +751,7 @@ const App = () => {
                             name: { label: 'Name', required: true, type: 'text' },
                             email: { label: 'Email', type: 'email' },
                             phone: { label: 'Phone', type: 'text' },
-                            interestedProperty: { label: 'Interested Property', required: true, type: 'select', options: properties, loading: loadingProperties, optionValue: 'property_id', optionLabel: 'property_name' },
+                            interestedProperty: { label: 'Interested Property', required: true, type: 'select', options: properties, loading: false, optionValue: 'property_id', optionLabel: 'property_name' },
                             unitType: { label: 'Unit Type', required: true, type: 'select', options: units, loading: loadingUnits, disabled: !formState.interestedProperty, optionValue: 'id', optionLabel: 'unit_name' },
                             budgetRange: { label: 'Budget Range', type: 'text', placeholder: '$1000-$1200' },
                             moveInDate: { label: 'Move-in Date', type: 'date' },

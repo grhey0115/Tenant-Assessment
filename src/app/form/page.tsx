@@ -24,7 +24,7 @@ export default function PublicFormPage() {
 
   // Dropdown data
   const [properties, setProperties] = useState<{ id: string; property_name: string; property_id: string }[]>([]);
-  const [units, setUnits] = useState<{ id: string; unit_name: string }[]>([]);
+  const [units, setUnits] = useState<{ id: string; unit_name: string; bedrooms: number; bathrooms: number }[]>([]);
   const [loadingProperties, setLoadingProperties] = useState(false);
   const [loadingUnits, setLoadingUnits] = useState(false);
 
@@ -47,6 +47,13 @@ export default function PublicFormPage() {
   const [modalTitle, setModalTitle] = useState("");
   const [modalMessage, setModalMessage] = useState("");
   const [modalType, setModalType] = useState<"info" | "success" | "error">("info");
+  // Ref to track if a success modal was visible
+  const wasSuccessModal = useRef(false);
+
+  // Add state for stage, bedrooms, and bathrooms
+  const [stage, setStage] = useState("");
+  const [bedrooms, setBedrooms] = useState<string>("");
+  const [bathrooms, setBathrooms] = useState<string>("");
 
   // Find property/unit names for review
   const propertyName = properties.find(p => p.property_id === property)?.property_name;
@@ -90,7 +97,7 @@ export default function PublicFormPage() {
     setLoadingUnits(true);
     supabase
       .from("units")
-      .select("id, unit_name")
+      .select("id, unit_name, bedrooms, bathrooms")
       .eq("property_id", property)
       .eq("status", "Available")
       .order("unit_name")
@@ -104,6 +111,18 @@ export default function PublicFormPage() {
         setLoadingUnits(false);
       });
   }, [property]);
+
+  // Auto-populate bedrooms and bathrooms as string when unit changes
+  useEffect(() => {
+    if (!unit) {
+      setBedrooms("");
+      setBathrooms("");
+      return;
+    }
+    const selectedUnit = units.find(u => u.id === unit);
+    setBedrooms(selectedUnit?.bedrooms !== undefined ? String(selectedUnit.bedrooms) : "");
+    setBathrooms(selectedUnit?.bathrooms !== undefined ? String(selectedUnit.bathrooms) : "");
+  }, [unit, units]);
 
   // Handler for dynamic section changes
   const handleSectionChange = (name: string, value: any) => {
@@ -144,7 +163,25 @@ export default function PublicFormPage() {
     setModalMessage(message);
     setModalType(type);
     setModalVisible(true);
+    if (type === "success") {
+      wasSuccessModal.current = true;
+    }
   };
+
+  // Handler for modal close
+  const handleModalClose = () => {
+    setModalVisible(false);
+  };
+
+  // Effect to refresh page 2s after success modal is closed
+  useEffect(() => {
+    if (!modalVisible && wasSuccessModal.current && modalType === "success") {
+      wasSuccessModal.current = false;
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    }
+  }, [modalVisible, modalType]);
 
   // Handle actual submission to Supabase
   const handleConfirmSubmit = async () => {
@@ -207,6 +244,9 @@ export default function PublicFormPage() {
         voice_note_url: uploadedVoiceUrl,
         recommendation,
         created_at: new Date().toISOString(),
+        stage,
+        bedrooms: bedrooms ? Number(bedrooms) : null,
+        bathrooms: bathrooms ? Number(bathrooms) : null,
       });
       const { error: insertError } = await supabase.from("tenant_assessments").insert({
         date,
@@ -220,6 +260,9 @@ export default function PublicFormPage() {
         voice_note_url: uploadedVoiceUrl,
         recommendation,
         created_at: new Date().toISOString(),
+        stage,
+        bedrooms: bedrooms ? Number(bedrooms) : null,
+        bathrooms: bathrooms ? Number(bathrooms) : null,
       });
       if (insertError) {
         console.error("Supabase insertion error:", insertError);
@@ -252,21 +295,21 @@ export default function PublicFormPage() {
           if (!response.ok) {
             const errorData = await response.json();
             console.error('Email sending failed:', errorData.error);
-            showNotificationModal(
-              'Email Error',
-              'Assessment submitted, but failed to send confirmation email.',
-              'error'
-            );
+            // showNotificationModal(
+            //   'Email Error',
+            //   'Assessment submitted, but failed to send confirmation email.',
+            //   'error'
+            // );
           } else {
             console.log('Email sent successfully');
           }
         } catch (emailError) {
           console.error('Email sending error:', emailError);
-          showNotificationModal(
-            'Email Error',
-            'Assessment submitted, but failed to send confirmation email.',
-            'error'
-          );
+          // showNotificationModal(
+          //   'Email Error',
+          //   'Assessment submitted, but failed to send confirmation email.',
+          //   'error'
+          // );
         }
       }
       
@@ -346,6 +389,32 @@ export default function PublicFormPage() {
                   {formErrors.unit && <p className="text-red-500 text-sm mt-1">{formErrors.unit}</p>}
                 </div>
                 <div>
+                  <label htmlFor="stage" className="block text-sm font-medium text-slate-700 mb-1">Stage</label>
+                  <input type="text" id="stage" name="stage" className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 text-slate-900 bg-slate-50" value={stage} onChange={e => setStage(e.target.value)} />
+                </div>
+                <div>
+                  <label htmlFor="bedrooms" className="block text-sm font-medium text-slate-700 mb-1">Bedrooms</label>
+                  <input
+                    type="text"
+                    id="bedrooms"
+                    name="bedrooms"
+                    className="w-full p-3 border border-slate-300 rounded-lg shadow-sm bg-slate-50 text-slate-900"
+                    value={bedrooms}
+                    onChange={e => setBedrooms(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="bathrooms" className="block text-sm font-medium text-slate-700 mb-1">Bathrooms</label>
+                  <input
+                    type="text"
+                    id="bathrooms"
+                    name="bathrooms"
+                    className="w-full p-3 border border-slate-300 rounded-lg shadow-sm bg-slate-50 text-slate-900"
+                    value={bathrooms}
+                    onChange={e => setBathrooms(e.target.value)}
+                  />
+                </div>
+                <div>
                   <label htmlFor="agent" className="block text-sm font-medium text-slate-700 mb-1 required-ast">Agent Name</label>
                   <input type="text" id="agent" name="agent" placeholder="Your Name" required className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 text-slate-900 bg-slate-50" value={agent} onChange={e => setAgent(e.target.value)} />
                   {formErrors.agent && <p className="text-red-500 text-sm mt-1">{formErrors.agent}</p>}
@@ -364,6 +433,7 @@ export default function PublicFormPage() {
                   <label htmlFor="prospectEmail" className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
                   <input type="email" id="prospectEmail" name="prospectEmail" placeholder="email@example.com" className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 text-slate-900 bg-slate-50" value={prospectEmail} onChange={e => setProspectEmail(e.target.value)} />
                 </div>
+                
               </div>
             </section>
             {/* Dynamic Sections */}
@@ -421,7 +491,7 @@ export default function PublicFormPage() {
           title={modalTitle}
           message={modalMessage}
           type={modalType}
-          onClose={() => setModalVisible(false)}
+          onClose={handleModalClose}
           isVisible={modalVisible}
         />
       </div>
