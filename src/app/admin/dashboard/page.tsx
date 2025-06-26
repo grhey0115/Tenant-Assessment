@@ -165,6 +165,7 @@ const App = () => {
     const router = useRouter();
     const [loadingApplicants, setLoadingApplicants] = useState(false);
     const [loadingNotes, setLoadingNotes] = useState(false);
+    const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
 
     const stages = [
         { id: 'lead', name: 'New Leads', color: 'bg-blue-500', icon: 'userPlus' },
@@ -250,6 +251,11 @@ const App = () => {
         }
     };
 
+    const showToast = (message: string) => {
+        setToast({ message, visible: true });
+        setTimeout(() => setToast({ message: '', visible: false }), 2500);
+    };
+
     const handleMoveApplicant = async (applicantId: number, currentStage: string) => {
         const currentStageIndex = stages.findIndex(s => s.id === currentStage);
         if (currentStageIndex < stages.length - 1) {
@@ -260,10 +266,13 @@ const App = () => {
                 .eq('id', applicantId);
             if (error) {
                 console.error('Error updating stage:', error);
+                showToast('Failed to move applicant. Please try again.');
             } else {
                 setApplicants(applicants.map(app =>
                     app.id === applicantId ? { ...app, stage: nextStage, daysInStage: 0 } : app
                 ));
+                const stageName = stages.find(s => s.id === nextStage)?.name || nextStage;
+                showToast(`Moved to ${stageName} successfully!`);
             }
         }
     };
@@ -938,6 +947,18 @@ const App = () => {
         );
       };
 
+    const Toast = ({ message, visible }: { message: string; visible: boolean }) => (
+        <div
+            className={`fixed top-6 right-6 z-50 transition-all duration-300 ${
+                visible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+            }`}
+        >
+            <div className="bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg font-medium">
+                {message}
+            </div>
+        </div>
+    );
+
     const renderActiveModule = () => {
         switch (activeModule) {
             case 'pipeline':
@@ -962,6 +983,7 @@ const App = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans">
+            <Toast message={toast.message} visible={toast.visible} />
             <ApplicantDetailModal applicant={selectedApplicant} isOpen={isModalOpen} onClose={closeModal} />
             <AddApplicantModal isOpen={isAddModalOpen} onClose={closeAddModal} onSave={handleAddApplicant} />
             <div className="bg-white shadow-sm border-b sticky top-0 z-10">
