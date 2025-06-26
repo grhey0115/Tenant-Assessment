@@ -196,8 +196,8 @@ const App = () => {
                 .from('applicants')
                 .select('*')
                 .order('created_at', { ascending: false });
-
-            if (error) {
+                
+                if (error) {
                 console.error('Error fetching applicants:', error);
             } else {
                 setApplicants(data || initialApplicants);
@@ -275,7 +275,7 @@ const App = () => {
             if (error) {
                 console.error('Error updating stage:', error);
                 showToast('Failed to move applicant. Please try again.');
-            } else {
+                    } else {
                 setApplicants(applicants.map(app =>
                     app.id === applicantId ? { ...app, stage: nextStage, daysInStage: 0 } : app
                 ));
@@ -342,16 +342,16 @@ const App = () => {
     
     const PipelineView = () => {
         if (loadingApplicants) {
-            return (
+        return (
                 <div className="flex justify-center items-center py-20">
                     <svg className="animate-spin h-8 w-8 text-blue-600 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
                     </svg>
                     <span className="text-gray-600 text-lg">Loading applicants...</span>
-                </div>
-            );
-        }
+            </div>
+        );
+    }
         const filteredApplicants = selectedStage === 'all'
             ? applicants
             : applicants.filter(app => app.stage === selectedStage);
@@ -375,10 +375,10 @@ const App = () => {
                                     >
                                         <div className={`mx-auto h-12 w-12 rounded-full flex items-center justify-center text-white ${getStageColorClass(stage.id)} ${isSelected ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}>
                                             <Icon name={stage.icon} className="h-6 w-6" />
-                                        </div>
+                </div>
                                         <div className="mt-2 text-xs md:text-sm font-semibold truncate">{stage.name}</div>
                                         <div className="text-xl md:text-2xl font-bold text-gray-800">{stageCounts[stage.id] || 0}</div>
-                                    </div>
+            </div>
                                     {index < stages.length - 1 && (
                                         <Icon name="arrowRight" className="h-6 w-6 text-gray-300 mx-1 flex-shrink-0 hidden md:block" />
                                     )}
@@ -435,7 +435,7 @@ const App = () => {
         const currentStageIndex = stages.findIndex(s => s.id === applicant.stage);
         const nextStage = stages[currentStageIndex + 1];
         const nextStageColor = nextStage ? nextStage.color : 'bg-blue-600';
-        return (
+    return (
             <div
                 className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border-l-4 cursor-pointer"
                 style={{ borderColor: getStageBorderColor(applicant.stage) }}
@@ -471,7 +471,7 @@ const App = () => {
                                         <span>Showing: {applicant.showingScheduled}</span>
                                     </div>
                                 )}
-                            </div>
+            </div>
                         </div>
                         <div className="flex flex-col items-stretch md:items-end space-y-2 w-full md:w-auto md:ml-4">
                             <div className="text-left md:text-right mb-2">
@@ -536,7 +536,8 @@ const App = () => {
                         className="absolute top-4 right-4 p-2 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                         aria-label="Close modal"
                     >
-                        <Icon name="x" className="h-6 w-6" />
+                        
+                  
                     </button>
                     <div className="p-6 sm:p-8 pt-0">
                         {children}
@@ -637,9 +638,9 @@ const App = () => {
                                     </div>
                                 ))
                             )}
-                        </div>
-                    </div>
-                )}
+            </div>
+                </div>
+            )}
             </Modal>
         );
     };
@@ -727,9 +728,9 @@ const App = () => {
                         className="p-2 -mr-2 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700"
                         aria-label="Close modal"
                     >
-                       
+                       <Icon name="x" className="h-6 w-6" />
                     </button>
-                </div>
+                    </div>
                 <form onSubmit={handleSubmit} className="space-y-4 px-6 sm:px-8 pb-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {/* Form fields */}
@@ -759,8 +760,8 @@ const App = () => {
                                 )}
                                 {errors[name] && <p className="text-red-500 text-xs mt-1">{errors[name]}</p>}
                             </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                         <textarea name="notes" value={formState.notes} onChange={handleChange} className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y" rows={4} placeholder="Additional notes..." />
@@ -794,9 +795,31 @@ const App = () => {
                 <div className="flex flex-col sm:flex-row w-full gap-3">
                     <button onClick={onConfirm} className="w-full px-5 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors font-semibold">Confirm</button>
                     <button onClick={onCancel} className="w-full px-5 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors font-semibold">Cancel</button>
-                </div>
+                    </div>
             </div>
         </div>
+    );
+
+    const PlaceholderView = ({ title, description, features }: { title: string, description: string, features: string[] }) => (
+        <div className="space-y-4">
+            <h2 className="text-xl font-semibold">{title}</h2>
+            <div className="bg-white rounded-lg shadow">
+                <div className="p-8 text-center">
+                    <div className="text-gray-400 mb-4"><Icon name="fileText" className="h-16 w-16 mx-auto" /></div>
+                    <h3 className="text-lg font-medium text-gray-600 mb-2">{title} Module</h3>
+                    <p className="text-gray-500 mb-4">{description}</p>
+                    {features && (
+                        <div className="text-left max-w-md mx-auto mb-4">
+                            <h4 className="font-medium text-gray-700 mb-2">Will include:</h4>
+                            <ul className="text-sm text-gray-600 space-y-1 list-disc list-inside">
+                                {features.map((feature, index) => (<li key={index}>{feature}</li>))}
+                            </ul>
+                        </div>
+                    )}
+                    <button className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Build {title} Module</button>
+                            </div>
+                            </div>
+                        </div>
     );
 
     const renderActiveModule = () => {
@@ -805,13 +828,20 @@ const App = () => {
                 return <PipelineView />;
             case 'tenantEvaluations':
                 return <ApplicationsReviewDashboard />;
+            case 'properties': return <PlaceholderView title="Available Units" description="Manage available rental units and their marketing." features={['Unit availability calendar','Pricing and amenities','Photos and virtual tours','Lead interest tracking per unit']} />;
+            case 'showings':
+                return <PlaceholderView title="Showings" description="Schedule and manage property showings." features={['Calendar integration','Automated confirmations','Showing feedback collection','No-show tracking and follow-up']} />;
+            case 'applications': return <PlaceholderView title="Applications" description="Manage rental applications and documents." features={['Digital application forms','Document upload and verification','Application status tracking','Automated processing workflows']} />;
+            case 'messages': return <PlaceholderView title="Communications" description="Unified messaging center for all applicant communications." features={['SMS and email templates','Automated follow-up sequences','Communication history','Response time tracking']} />;
+            case 'reports': return <PlaceholderView title="Reports & Analytics" description="Performance metrics and leasing analytics." features={['Lead conversion funnel','Source performance tracking','Agent productivity metrics','Time-to-lease analysis']} />;
+            case 'settings': return <PlaceholderView title="Settings" description="System configuration and preferences." features={['User management','Automated workflow rules','Email and SMS templates','Integration settings']} />;
             default:
                 return (
                     <div className="text-center p-10 bg-white rounded-lg shadow-sm">
                         <Icon name={modules.find(m => m.id === activeModule)?.icon as 'activity'} className="h-12 w-12 mx-auto text-gray-300" />
                         <h2 className="mt-2 text-xl font-bold text-gray-700">{modules.find(m => m.id === activeModule)?.name}</h2>
                         <p className="mt-1 text-gray-500">This module is for demonstration purposes.</p>
-                    </div>
+                        </div>
                 );
         }
     };
